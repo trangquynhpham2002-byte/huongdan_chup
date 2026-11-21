@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Góc chụp</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Góc chụp">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#111111">
+<style>
+:root{color-scheme:dark;--bg:#111;--panel:#1c1c1e;--tx:#f2f2f2;--mut:#9a9aa0;--ok:#34c759;--warn:#ffcc00;--bad:#ff453a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+#cam{position:relative;height:56vh;background:#000;overflow:hidden}
+video{width:100%;height:100%;object-fit:cover}
+.grid{position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(#fff4 1px,transparent 1px),linear-gradient(90deg,#fff4 1px,transparent 1px);background-size:100% 33.333%,33.333% 100%}
+#hz{position:absolute;left:0;right:0;top:50%;height:2px;background:var(--bad);transition:background .2s;transform-origin:center}
+#badge{position:absolute;top:10px;left:50%;transform:translateX(-50%);padding:6px 14px;border-radius:20px;font-weight:600;background:#000a;font-size:15px;white-space:nowrap}
+#start{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;background:#000c;text-align:center;padding:20px}
+button{font:inherit;border:0;border-radius:12px;padding:12px 20px;background:#0a84ff;color:#fff;font-weight:600}
+.sub{color:var(--mut);font-size:13px}
+#panel{padding:14px;background:var(--panel);border-radius:18px 18px 0 0;margin-top:-14px;position:relative}
+#scenes{display:flex;gap:8px;overflow-x:auto;padding-bottom:10px}
+.chip{flex:none;padding:8px 14px;border-radius:20px;background:#2c2c2e;color:var(--tx);font-weight:500}
+.chip.on{background:#0a84ff}
+.meter{display:flex;gap:10px;margin:6px 0 10px}
+.m{flex:1;background:#2c2c2e;border-radius:12px;padding:8px;text-align:center}
+.m b{display:block;font-size:22px}
+.m span{font-size:12px;color:var(--mut)}
+h3{margin:10px 0 4px;font-size:15px}
+.ref{margin-top:14px;padding-top:12px;border-top:1px solid #3a3a3c}
+.ref label.btn{display:block;text-align:center;padding:12px;border-radius:12px;background:#2c2c2e;font-weight:600}
+#refImg{display:none;width:100%;max-height:260px;object-fit:contain;margin-top:10px;border-radius:12px;background:#000}
+#refGo{display:none;width:100%;margin-top:10px}
+#refOut{white-space:pre-wrap;font-size:14px;line-height:1.55;margin-top:10px}
+ul{margin:0;padding-left:18px;line-height:1.5;font-size:14px}
+</style>
+</head>
+<body>
+<div id="cam">
+<video id="v" playsinline muted autoplay></video>
+<div class="grid"></div><div id="hz"></div>
+<div id="badge">Chọn cảnh bên dưới</div>
+<div id="start"><div>Bật camera và cảm biến để nhận gợi ý góc chụp trực tiếp</div><button id="go">Bắt đầu</button><div class="sub">Nếu camera không mở được, cảm biến góc nghiêng vẫn dùng được.</div></div>
+</div>
+<div id="panel">
+<div id="scenes"></div>
+<div class="meter">
+<div class="m"><b id="cur">--</b><span>Nghiêng lên/xuống hiện tại</span></div>
+<div class="m"><b id="tgt">--</b><span>Mục tiêu</span></div>
+<div class="m"><b id="roll">--</b><span>Lệch trái/phải</span></div>
+</div>
+<div id="tips"></div>
+<div id="pose"></div>
+<div class="ref">
+<h3>Chụp theo ảnh mẫu</h3>
+<div class="sub">Bước 1: lưu ảnh mẫu từ Google về máy. Bước 2: bấm nút dưới, Claude mở ra, bạn dán lời nhắc rồi đính kèm ảnh. Bước 3: nhập góc nghiêng Claude gợi ý vào ô bên dưới để thước đo góc theo ảnh mẫu.</div>
+<button id="cp" style="width:100%;margin-top:10px">Sao chép lời nhắc và mở Claude</button>
+<div id="cpMsg" class="sub" style="margin-top:6px"></div>
+<div style="display:flex;gap:8px;margin-top:10px"><input id="angIn" type="text" inputmode="text" placeholder="Góc nghiêng, ví dụ -10" style="flex:1;min-width:0;padding:10px;border-radius:12px;border:0;background:#2c2c2e;color:#f2f2f2;font:inherit"><button id="angGo">Đặt mục tiêu</button></div>
+</div>
+</div>
+<script>
+const S=[
+{n:"Chân dung",t:-5,h:"Ngang mắt hoặc cao hơn mắt người mẫu một chút",tips:["Giữ máy ngang tầm mắt hoặc nhích cao hơn chút, chúc nhẹ xuống","Đặt mắt người mẫu ở đường lưới ngang trên","Đứng cách 1,5–2 m và zoom nhẹ 2x để mặt đỡ méo","Quay lưng về hướng ánh sáng mềm, tránh nắng gắt đỉnh đầu"]},
+{n:"Toàn thân",t:0,h:"Giữ máy ngang thắt lưng, thẳng đứng",tips:["Máy ngang thắt lưng, thân máy thẳng đứng để chân không bị ngắn","Chừa khoảng trống phía trên đầu và dưới chân","Lùi xa 3 m trở lên và dùng zoom 2x","Ngồi hơi thấp xuống nếu muốn chân dài hơn"]},
+{n:"Đồ ăn (nghiêng)",t:-45,h:"Cao hơn bàn, chúc xuống 45°",tips:["Giữ máy chúc xuống khoảng 45° so với mặt bàn","Ngồi gần cửa sổ, ánh sáng chiếu từ bên hông","Món chính nằm ở giao điểm đường lưới","Xếp thêm 1–2 đồ phụ (ly, thìa) làm tiền cảnh"]},
+{n:"Đồ ăn (từ trên)",t:-90,h:"Hướng thẳng xuống mặt bàn, máy nằm ngang",tips:["Máy song song mặt bàn, camera ngay phía trên món","Nhìn vào thanh lệch: giữ gần 0° để không bị méo","Bố cục gọn, đặt vật theo lưới 3x3","Tránh để bóng tay che món"]},
+{n:"Phong cảnh",t:0,h:"Ngang tầm ngực, giữ đường chân trời thẳng",tips:["Đường chân trời nằm trên đường lưới dưới (1/3) hoặc trên (1/3)","Giữ lệch trái/phải gần 0°","Thêm vật tiền cảnh (cây, lan can) tạo chiều sâu","Chụp lúc nắng sớm hoặc chiều muộn"]},
+{n:"Kiến trúc/tòa nhà",t:0,h:"Giữ máy thẳng đứng, lùi ra xa",tips:["Giữ máy thẳng đứng: nghiêng lên sẽ làm tòa nhà bị đổ","Lùi xa rồi zoom thay vì ngẩng máy","Căn các đường dọc song song với đường lưới dọc","Chụp từ góc chéo để thấy khối của tòa nhà"]},
+{n:"Quán cà phê/nội thất",t:-8,h:"Ngang ngực, chúc xuống nhẹ",tips:["Máy ngang ngực, chúc xuống nhẹ 5–10°","Giữ đường dọc của tường, cửa thẳng đứng","Đứng ở góc phòng để lấy được rộng hơn","Dùng ánh sáng cửa sổ, tắt flash"]},
+{n:"Đường phố/góc thấp",t:12,h:"Hạ máy sát đất, ngẩng nhẹ lên",tips:["Hạ máy thấp ngang đầu gối, ngẩng nhẹ 10–15°","Dùng vạch kẻ, lề đường làm đường dẫn mắt","Chờ người đi vào khung rồi bấm","Chụp liên tiếp vài tấm để chọn"]}
+];
+let cur=null,tilt=null,roll=null,refBlob=null;
+const POSE={
+"Chân dung":{d:["Xoay vai chéo 30–45° so với máy, không đứng thẳng đối diện","Trọng lượng dồn lên chân sau, vai gần máy hạ thấp","Tay thả lỏng hoặc chạm nhẹ vào tóc, cổ áo, tránh buông cứng"],m:["Hạ cằm nhẹ và đưa đầu hơi về phía trước để gọn đường hàm","Nghiêng đầu 5–10° về phía vai cao","Chụp mặt chéo 3/4, mắt nhìn vào ống kính hoặc lệch ra xa"],b:["Cười hé, nâng hai bên má","Hít thở nhẹ rồi thở ra ngay trước khi bấm","Nghĩ tới điều vui để mắt cười theo"]},
+"Toàn thân":{d:["Đứng chéo 45°, một chân đặt trước, gót chân sau hơi nhấc","Thả lỏng vai, hơi ưỡn lưng","Một tay bỏ túi hoặc cầm túi, tay kia buông tự nhiên","Bước một chân tới trước giữa chừng, trông tự nhiên hơn đứng yên"],m:["Hạ cằm nhẹ, nhìn thẳng ống kính hoặc nhìn ngang","Xoay mặt 3/4 giống như phần dáng người"],b:["Cười tự nhiên hoặc vừa đi vừa quay lại nhìn máy","Giữ miệng thả lỏng, không gồng má"]},
+"Đồ ăn (nghiêng)":{d:["Dùng một tay cầm dao, thìa hoặc ly vào khung để có cảm giác đang dùng bữa","Tay vào khung từ cạnh, không chắn món"],m:["Nếu có mặt trong khung, nhìn xuống món ăn"],b:["Cười nhẹ, mắt cong theo món ngon"]},
+"Đồ ăn (từ trên)":{d:["Tay cầm thìa hoặc nĩa vào từ một góc","Giữ khoảng cách giữa các vật cho thoáng"],m:["Thường không có mặt, tập trung vào món"],b:["Không cần biểu cảm, chú ý bố cục"]},
+"Phong cảnh":{d:["Đứng quay lưng hoặc nghiêng người, nhìn ra cảnh","Người chiếm 1/3 khung, đặt ở đường lưới dọc","Đi chậm hoặc đưa tay chạm vào cảnh vật như tóc, váy bay trong gió"],m:["Nhìn xa ra phía cảnh, không nhìn máy","Nếu quay mặt, xoay 3/4"],b:["Mắt thư thái, miệng cười hé"]},
+"Kiến trúc/tòa nhà":{d:["Đứng lệch sang đường lưới dọc để lộ tòa nhà","Dựa nhẹ vào tường hoặc cột, một chân bắt chéo"],m:["Nhìn lên kiến trúc hoặc ra xa"],b:["Tự nhiên, thoải mái, không cần cười lớn"]},
+"Quán cà phê/nội thất":{d:["Ngồi hơi chéo, lưng thẳng nhẹ, hai tay ôm ly hoặc chạm vào sách","Dùng đồ có sẵn trên bàn làm đạo cụ"],m:["Nhìn xuống ly hoặc nhìn ra cửa sổ, sau đó xoay sang nhìn máy","Mặt 3/4 hướng về phía ánh sáng cửa sổ"],b:["Cười nhẹ, mắt dịu","Chụp liên tiếp lúc đang nói chuyện sẽ tự nhiên nhất"]},
+"Đường phố/góc thấp":{d:["Đi bộ chậm qua khung, bước chân dài, tay đung đưa","Hơi nghiêng người về hướng đi","Dừng lại giữa bước rồi quay đầu nhìn máy"],m:["Nhìn thẳng phía trước hoặc quay nhẹ về phía máy"],b:["Thoải mái, hơi mỉm cười"]}
+};
+function renderPose(n){const p=POSE[n];if(!p){$("pose").innerHTML="";return}const L=a=>"<ul>"+a.map(t=>"<li>"+t+"</li>").join("")+"</ul>";$("pose").innerHTML="<h3>Dáng người mẫu</h3>"+L(p.d)+"<h3>Góc mặt & ánh mắt</h3>"+L(p.m)+"<h3>Biểu cảm</h3>"+L(p.b)}
+const $=id=>document.getElementById(id);
+S.forEach((s,i)=>{const b=document.createElement("button");b.className="chip";b.textContent=s.n;b.onclick=()=>pick(i);$("scenes").appendChild(b)});
+function pick(i){cur=i;[...$("scenes").children].forEach((c,j)=>c.classList.toggle("on",i===j));const s=S[i];$("tgt").textContent=s.t+"°";$("tips").innerHTML="<h3>"+s.h+"</h3><ul>"+s.tips.map(t=>"<li>"+t+"</li>").join("")+"</ul>";renderPose(s.n);upd()}
+function upd(){
+if(tilt===null)return;
+$("cur").textContent=Math.round(tilt)+"°";$("roll").textContent=Math.round(roll)+"°";
+$("hz").style.transform="rotate("+(-roll)+"deg)";
+const rOk=Math.abs(roll)<=2;
+$("hz").style.background=rOk?"var(--ok)":Math.abs(roll)<=6?"var(--warn)":"var(--bad)";
+if(cur===null){$("badge").textContent="Chọn cảnh bên dưới";return}
+const d=tilt-S[cur].t,ok=Math.abs(d)<=4;
+let msg=ok?"Góc đẹp ✓":d>0?"Hạ máy chúc xuống thêm":"Ngẩng máy lên thêm";
+if(!rOk)msg+=roll>0?" · Nghiêng máy sang trái":" · Nghiêng máy sang phải";
+$("badge").textContent=msg;$("badge").style.color=ok&&rOk?"var(--ok)":"var(--tx)"}
+function onOri(e){if(e.beta==null)return;tilt=Math.max(-90,Math.min(90,e.beta-90));roll=e.gamma||0;if(e.beta<20){tilt=-90+e.beta}upd()}
+const PROMPT="Bạn là huấn luyện viên chụp ảnh bằng điện thoại. Tôi gửi một ảnh mẫu tôi thích và muốn chụp lại giống vậy. Hãy phân tích ảnh và hướng dẫn bằng tiếng Việt, ngắn gọn, dễ làm theo, chia các mục có tiêu đề in hoa: GÓC MÁY (độ cao so với người mẫu, nghiêng lên hay xuống khoảng bao nhiêu độ, khoảng cách, nên zoom 1x hay 2x, ngang hay dọc); DÁNG NGƯỜI MẪU (từng bước: chân, hông, vai, tay); GÓC MẶT VÀ ÁNH MẮT; BIỂU CẢM; ÁNH SÁNG VÀ BỐI CẢNH; NHẮC NHANH (3 ý quan trọng nhất). Chỉ mô tả tư thế, góc chụp và bố cục, không nhận diện danh tính, không nhận xét ngoại hình hay cơ thể. Nếu ảnh không có người thì chỉ hướng dẫn góc máy và bố cục. Dòng cuối cùng đúng định dạng: GOC_NGHIENG: <số nguyên độ>, trong đó 0 là máy thẳng đứng, số âm là chúc xuống, số dương là ngẩng lên, -90 là chụp thẳng từ trên xuống.";
+$("cp").onclick=async()=>{let ok=false;try{await navigator.clipboard.writeText(PROMPT);ok=true}catch(e){}
+$("cpMsg").textContent=ok?"Đã sao chép lời nhắc. Dán vào Claude và đính kèm ảnh mẫu.":"Không sao chép được tự động, bạn nhấn giữ vào ô dưới để chép tay.";
+if(!ok){const t=document.createElement("textarea");t.value=PROMPT;t.readOnly=true;t.style.cssText="width:100%;height:120px;margin-top:6px;background:#2c2c2e;color:#f2f2f2;border:0;border-radius:12px;padding:8px";$("cpMsg").after(t)}
+setTimeout(()=>{window.location.href="https://claude.ai/new"},ok?600:0);if(!ok){}};
+$("angGo").onclick=()=>{const m=$("angIn").value.replace("−","-").match(/-?\d+/);if(!m){$("angIn").value="";$("angIn").placeholder="Nhập số, ví dụ -10";return}
+const t=Math.max(-90,Math.min(90,parseInt(m[0],10)));let i=S.findIndex(x=>x.n==="Ảnh mẫu");
+if(i<0){S.push({n:"Ảnh mẫu",t:t,h:"Góc máy theo ảnh mẫu của bạn",tips:["Làm theo hướng dẫn Claude đã đưa cho ảnh mẫu","Khớp góc nghiêng mục tiêu rồi chỉnh dáng và góc mặt"]});i=S.length-1;const b=document.createElement("button");b.className="chip";b.textContent="Ảnh mẫu";b.onclick=()=>pick(i);$("scenes").appendChild(b)}else{S[i].t=t}
+pick(i);window.scrollTo({top:0,behavior:"smooth"})};
+$("go").onclick=async()=>{
+$("start").style.display="none";
+try{if(window.DeviceOrientationEvent&&DeviceOrientationEvent.requestPermission){await DeviceOrientationEvent.requestPermission()}}catch(e){}
+window.addEventListener("deviceorientation",onOri);
+try{const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});$("v").srcObject=st}catch(e){$("badge").textContent="Không mở được camera, vẫn dùng được cảm biến"}
+};
+if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{})}
+</script>
+</body>
+</html>
